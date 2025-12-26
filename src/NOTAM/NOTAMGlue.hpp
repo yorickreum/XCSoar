@@ -154,6 +154,13 @@ public:
    */
   FilterStats GetFilterStats() const;
 
+  /**
+   * Find a NOTAM by its number (e.g., "A1234/24")
+   * @param number The NOTAM number to search for
+   * @return Pointer to the NOTAM if found, nullptr otherwise
+   */
+  const struct NOTAM* FindNOTAMByNumber(const std::string &number) const;
+
 private:
   Co::InvokeTask LoadNOTAMsInternal(GeoPoint location);
   void OnLoadComplete(std::exception_ptr error) noexcept;

@@ -134,5 +134,6 @@ AirspaceRendererSettings::SetDefaults()
   classes[FIS_SECTOR].SetColors(RGB8_BLUE);
   classes[LTA].SetColors(RGB8_BLUE);
   classes[UTA].SetColors(RGB8_BLUE);
+  classes[NOTAM].SetColors(RGB8_BLACK);
   classes[AIRSPACECLASSCOUNT].SetColors(RGB8_MAGENTA);
 }

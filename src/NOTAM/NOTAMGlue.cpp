@@ -475,6 +475,21 @@ NOTAMGlue::GetFilterStats() const
   return stats;
 }
 
+const struct NOTAM*
+NOTAMGlue::FindNOTAMByNumber(const std::string &number) const
+{
+  const std::lock_guard<Mutex> lock(mutex);
+  auto *impl = static_cast<const NOTAMImpl*>(current_notams_impl);
+  
+  for (const auto &notam : impl->current_notams) {
+    if (notam.number == number) {
+      return &notam;
+    }
+  }
+  
+  return nullptr;
+}
+
 int
 NOTAMGlue::TestNOTAMFetch(const GeoPoint &location)
 {
@@ -681,25 +696,8 @@ NOTAMGlue::UpdateAirspaces(Airspaces &airspaces)
         
         tstring notam_name = tstring(main_text.begin(), main_text.end());
         
-        // Format station name as "[series], [type], [selection_code]"
-        std::string notam_station_str;
-        if (!notam.series.empty()) {
-          notam_station_str += notam.series;
-        }
-        if (!notam.type.empty()) {
-          if (!notam_station_str.empty()) {
-            notam_station_str += ", ";
-          }
-          notam_station_str += notam.type;
-        }
-        if (!notam.feature_type.empty()) {
-          if (!notam_station_str.empty()) {
-            notam_station_str += ", ";
-          }
-          notam_station_str += notam.feature_type;
-        }
-        
-        tstring notam_station = tstring(notam_station_str.begin(), notam_station_str.end());
+        // Store the NOTAM number in station_name so we can look it up later
+        tstring notam_station = tstring(notam.number.begin(), notam.number.end());
         
         // Use the parsed AirspaceAltitude objects directly
         AirspaceAltitude base = notam.lower_altitude;
