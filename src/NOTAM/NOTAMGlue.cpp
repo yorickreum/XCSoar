@@ -87,7 +87,7 @@ NOTAMGlue::OnTimer(const GeoPoint &current_location)
   
   // Check if time interval has elapsed since last successful fetch
   bool time_expired = (last_time == 0) || 
-                      (now - last_time >= settings.refresh_interval_min * 60);
+                      (now - last_time >= (std::time_t)(settings.refresh_interval_min * 60));
   
   // Also check if enough time has passed since last attempt (even if it failed)
   // This prevents rapid retries when there's no network connection

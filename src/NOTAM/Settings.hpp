@@ -46,20 +46,15 @@ struct NOTAMSettings {
    * 
    * Q-code meanings (selection, see https://www.faa.gov/air_traffic/publications/atpubs/notam_html/appendix_b.html):
    * - QA: Aerodrome / Administrative large area operational info
-   * - QF: Facilities & services
    * - QK: Checklist / Admin
-   * - QM: Movement area / runway / taxiways
    * - QN: NAVAIDs
-   * - QO: Obstacles (excluding QOL)
-   * - QOA: Obstacles - general
-   * - QOBTT: Obstacles - temporary
    * - QOL: Obstacle Lights
-   * - QR: Runway / ops status
-   * - QW: Airspace warnings / hazards
+   * - QOA: Obstacles - general
+   * - QOBTT: Obstacles - temporary / trigger
    */
   StaticString<64> hidden_qcodes;
   
   void SetDefaults() noexcept {
-    hidden_qcodes = _T("QA QK QN QOA QOBTT QOL");
+    hidden_qcodes = _T("QA QK QN QOL QOA QOBTT");
   }
 };
