@@ -8,6 +8,7 @@
 #include "co/InjectTask.hxx"
 #include "thread/Mutex.hxx"
 #include "Geo/GeoPoint.hpp"
+#include "RateLimiter.hpp"
 #include <vector>
 #include <memory>
 
@@ -20,7 +21,7 @@ class AllocatedPath;
 /**
  * NOTAM manager that handles loading and refreshing NOTAMs
  */
-class NOTAMGlue {
+class NOTAMGlue : public RateLimiter {
   const NOTAMSettings &settings;
   CurlGlobal &curl;
   
@@ -37,10 +38,13 @@ class NOTAMGlue {
   
   /** Whether NOTAMs are currently being loaded */
   bool loading = false;
+  
+  /** Whether a retry is pending (waiting for RateLimiter timer) */
+  bool retry_pending = false;
 
 public:
   NOTAMGlue(const NOTAMSettings &_settings, CurlGlobal &_curl);
-  ~NOTAMGlue();
+  virtual ~NOTAMGlue();
 
   /**
    * Update the current location and trigger NOTAM refresh if needed
@@ -122,6 +126,9 @@ public:
 private:
   Co::InvokeTask LoadNOTAMsInternal(GeoPoint location);
   void OnLoadComplete(std::exception_ptr error) noexcept;
+  
+  /** RateLimiter callback for delayed retry */
+  void Run() override;
   
   /** Save raw GeoJSON response to file */
   void SaveNOTAMsToFile(const std::string &geojson_response, const GeoPoint &location) const;

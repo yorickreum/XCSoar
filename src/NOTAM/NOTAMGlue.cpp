@@ -53,7 +53,8 @@ struct NOTAMImpl {
 };
 
 NOTAMGlue::NOTAMGlue(const NOTAMSettings &_settings, CurlGlobal &_curl)
-  : settings(_settings), curl(_curl), 
+  : RateLimiter(std::chrono::seconds(30), std::chrono::seconds(30)),
+    settings(_settings), curl(_curl), 
     current_notams_impl(new NOTAMImpl()),
     load_task(curl.GetEventLoop())
 {
@@ -73,6 +74,13 @@ NOTAMGlue::OnTimer(const GeoPoint &current_location)
   if (settings.refresh_interval_min == 0)
     return;
 
+  // If we're already loading or a retry is pending, skip auto-refresh
+  {
+    const std::lock_guard<Mutex> lock(mutex);
+    if (loading || retry_pending)
+      return;
+  }
+
   GeoPoint last_loc = GetLastUpdateLocation();
   std::time_t last_time = GetLastUpdateTime();
   std::time_t now = std::time(nullptr);
@@ -86,8 +94,6 @@ NOTAMGlue::OnTimer(const GeoPoint &current_location)
                           current_location.Distance(last_loc) > (settings.radius_km * 1000.0 / 2.0);
   
   if (time_expired || location_changed) {
-    LogFormat("NOTAM: Auto-refresh triggered (time_expired=%d, location_changed=%d)",
-              (int)time_expired, (int)location_changed);
     UpdateLocation(current_location);
   }
 }
@@ -111,8 +117,15 @@ NOTAMGlue::UpdateLocation(const GeoPoint &location)
       return; // Already loading, skip this request
     }
     loading = true;
+    retry_pending = false;
     current_location = location;
   }
+  
+  // Log only when we actually start a fetch
+  LogFormat("NOTAM: Auto-refresh starting");
+  
+  // Cancel any pending retry since we're starting a new attempt
+  Cancel();
 
   // Start async loading
   load_task.Start(LoadNOTAMsInternal(location), 
@@ -141,8 +154,12 @@ NOTAMGlue::LoadNOTAMs(const GeoPoint &location, OperationEnvironment &operation)
       return;
     }
     loading = true;
+    retry_pending = false;
     current_location = location;
   }
+  
+  // Cancel any pending retry since we're starting a new attempt
+  Cancel();
   
   // Start async loading
   load_task.Start(LoadNOTAMsInternal(location), 
@@ -281,21 +298,56 @@ void
 NOTAMGlue::OnLoadComplete(std::exception_ptr error) noexcept
 {
   // Reset loading flag
+  bool schedule_retry = false;
   {
     const std::lock_guard<Mutex> lock(mutex);
     loading = false;
-  }
-  
-  // If load was successful, update the airspace database
-  if (!error && data_components && data_components->airspaces) {
-    try {
-      LogFormat("NOTAM: Updating airspace database with loaded NOTAMs");
-      UpdateAirspaces(*data_components->airspaces);
-      LogFormat("NOTAM: Airspace database updated successfully");
-    } catch (const std::exception &e) {
-      LogFormat("NOTAM: Error updating airspace database: %s", e.what());
+    if (error) {
+      retry_pending = true;
+      schedule_retry = true;
+    } else {
+      retry_pending = false;
     }
   }
+  
+  if (schedule_retry) {
+    // Failed - schedule retry with fixed 30-second delay
+    LogFormat("NOTAM: Fetch failed, scheduling retry in 30 seconds");
+    Trigger();
+  } else {
+    // Success - cancel any pending retry
+    Cancel();
+    
+    // Update the airspace database
+    if (data_components && data_components->airspaces) {
+      try {
+        LogFormat("NOTAM: Updating airspace database with loaded NOTAMs");
+        UpdateAirspaces(*data_components->airspaces);
+        LogFormat("NOTAM: Airspace database updated successfully");
+      } catch (const std::exception &e) {
+        LogFormat("NOTAM: Error updating airspace database: %s", e.what());
+      }
+    }
+  }
+}
+
+void
+NOTAMGlue::Run()
+{
+  LogFormat("NOTAM: Retry timer fired, attempting fetch again");
+  
+  GeoPoint location;
+  {
+    const std::lock_guard<Mutex> lock(mutex);
+    retry_pending = false;
+    if (loading || !current_location.IsValid()) {
+      return;
+    }
+    location = current_location;
+  }
+  
+  // Trigger a new fetch attempt (outside the lock)
+  UpdateLocation(location);
 }
 
 unsigned
@@ -507,6 +559,7 @@ NOTAMGlue::UpdateAirspaces(Airspaces &airspaces)
         if (main_text.length() > 150) {
           main_text = main_text.substr(0, 147) + "...";
         }
+        
         tstring notam_name = tstring(main_text.begin(), main_text.end());
         
         // Use ICAO location code for station name
@@ -516,16 +569,26 @@ NOTAMGlue::UpdateAirspaces(Airspaces &airspaces)
         AirspaceAltitude base = notam.lower_altitude;
         AirspaceAltitude top = notam.upper_altitude;
         
-        // Set reasonable defaults if altitudes are invalid (altitude == -1 indicates invalid)
-        if (base.altitude < 0) {
+        // Set reasonable defaults if altitudes are invalid
+        // Check the reference field for garbage values (valid: 0=AGL, 1=MSL, 2=STD)
+        if (base.reference != AltitudeReference::AGL && 
+            base.reference != AltitudeReference::MSL && 
+            base.reference != AltitudeReference::STD) {
+          // Uninitialized or invalid - set to ground level
           base.reference = AltitudeReference::AGL;
           base.altitude_above_terrain = 0;
-          base.altitude = 0; // fallback
+          base.altitude = 0;
+          base.flight_level = 0;
         }
         
-        if (top.altitude < 0) {
+        if (top.reference != AltitudeReference::AGL && 
+            top.reference != AltitudeReference::MSL && 
+            top.reference != AltitudeReference::STD) {
+          // Uninitialized or invalid - set to high MSL altitude
           top.reference = AltitudeReference::MSL;
-          top.altitude = 9999; // High altitude fallback
+          top.altitude = 9999;
+          top.altitude_above_terrain = 0;
+          top.flight_level = 0;
         }
         
         // Set airspace properties using SetProperties method
