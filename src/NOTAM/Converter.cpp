@@ -15,6 +15,7 @@
 #include "Engine/Airspace/AirspacePolygon.hpp"
 #include "Engine/Airspace/AbstractAirspace.hpp"
 #include "TransponderCode.hpp"
+#include "util/ConvertString.hpp"
 
 #include <memory>
 
@@ -117,10 +118,11 @@ ConvertNOTAMToAirspace(const struct NOTAM &notam, Airspaces &airspaces)
     }
     
     // Set airspace properties with all required parameters
-    std::string name = notam.number.empty() ? ("NOTAM " + notam.id) : notam.number;
+    const auto &name_str = notam.number.empty() ? ("NOTAM " + notam.id) : notam.number;
+    tstring name = UTF8ToWideConverter(name_str.c_str()).c_str();
     airspace->SetProperties(
       std::move(name), // name
-      "", // station_name
+      _T(""), // station_name
       TransponderCode(), // transponder_code
       DetermineAirspaceClass(notam), // class
       DetermineAirspaceClass(notam), // type

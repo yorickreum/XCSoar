@@ -8,6 +8,7 @@
 #include "DataComponents.hpp"
 #include "Message.hpp"
 #include "util/StaticString.hxx"
+#include "util/ConvertString.hpp"
 
 // Use full struct name to avoid collision with AirspaceClass::NOTAM enum
 using NOTAMStruct = struct NOTAM;
@@ -257,7 +258,7 @@ NOTAMGlue::LoadNOTAMsInternal(GeoPoint location)
     // Fetch raw GeoJSON using the client
     LogFormat("NOTAM: Calling FetchNOTAMsRaw...");
     auto raw_geojson = co_await NOTAMClient::FetchNOTAMsRaw(curl, settings, location, progress);
-    LogFormat("NOTAM: Received GeoJSON response (%zu bytes)", raw_geojson.size());
+    LogFormat("NOTAM: Received GeoJSON response (%lu bytes)", (unsigned long)raw_geojson.size());
     
     // Save raw GeoJSON to file for caching
     LogFormat("NOTAM: Saving GeoJSON to cache file");
@@ -363,7 +364,7 @@ NOTAMGlue::LoadCachedNOTAMs()
   
   // Log the cache file path for debugging
   auto file_path = GetNOTAMCacheFilePath();
-  LogFormat("NOTAM: Attempting to load cache from: %s", file_path.c_str());
+  LogFormat("NOTAM: Attempting to load cache from: %s", WideToUTF8Converter(file_path.c_str()).c_str());
   
   // Try to load from cache file
   if (LoadNOTAMsFromFile(cached_notams)) {
@@ -380,7 +381,7 @@ NOTAMGlue::LoadCachedNOTAMs()
     return count;
   }
   
-  LogFormat("NOTAM: No cached NOTAMs found at: %s", file_path.c_str());
+  LogFormat("NOTAM: No cached NOTAMs found at: %s", WideToUTF8Converter(file_path.c_str()).c_str());
   return 0;
 }
 
@@ -390,11 +391,11 @@ NOTAMGlue::InvalidateCache()
   auto file_path = GetNOTAMCacheFilePath();
   
   if (File::Exists(file_path)) {
-    LogFormat("NOTAM: Invalidating cache file: %s", file_path.c_str());
+    LogFormat("NOTAM: Invalidating cache file: %s", WideToUTF8Converter(file_path.c_str()).c_str());
     File::Delete(file_path);
     LogFormat("NOTAM: Cache invalidated successfully");
   } else {
-    LogFormat("NOTAM: No cache file to invalidate at: %s", file_path.c_str());
+    LogFormat("NOTAM: No cache file to invalidate at: %s", WideToUTF8Converter(file_path.c_str()).c_str());
   }
 }
 
@@ -455,7 +456,7 @@ NOTAMGlue::GetFilterStats() const
     
     // Count how many fail Q-code filter (independently)
     const auto &qcode = notam.feature_type;
-    if (!qcode.empty() && IsQCodeHidden(qcode, settings.hidden_qcodes.c_str())) {
+    if (!qcode.empty() && IsQCodeHidden(qcode, WideToUTF8Converter(settings.hidden_qcodes.c_str()).c_str())) {
       stats.filtered_by_qcode++;
     }
     
@@ -592,7 +593,7 @@ ShouldDisplayNOTAM(const NOTAMStruct &notam, const NOTAMSettings &settings)
   LogFormat("NOTAM Filter: %s Q-code='%s'", notam.number.c_str(), qcode.c_str());
   
   // Check if this Q-code matches any prefix in the hidden list
-  if (IsQCodeHidden(qcode, settings.hidden_qcodes.c_str())) {
+  if (IsQCodeHidden(qcode, WideToUTF8Converter(settings.hidden_qcodes.c_str()).c_str())) {
     LogFormat("NOTAM Filter: %s Q-code %s is hidden", notam.number.c_str(), qcode.c_str());
     return false;
   }
@@ -770,7 +771,7 @@ NOTAMGlue::SaveNOTAMsToFile(const std::string &geojson_response, const GeoPoint 
 {
   try {
     auto file_path = GetNOTAMCacheFilePath();
-    LogFormat("NOTAM: Saving GeoJSON to cache: %s", file_path.c_str());
+    LogFormat("NOTAM: Saving GeoJSON to cache: %s", WideToUTF8Converter(file_path.c_str()).c_str());
     
     // Validate UTF-8 before saving - boost::json will validate during parse anyway,
     // but we check here to avoid saving potentially corrupted data
@@ -804,7 +805,7 @@ NOTAMGlue::LoadNOTAMsFromFile(std::vector<NOTAMStruct> &notams) const
 {
   try {
     auto file_path = GetNOTAMCacheFilePath();
-    LogFormat("NOTAM: LoadNOTAMsFromFile attempting to load: %s", file_path.c_str());
+    LogFormat("NOTAM: LoadNOTAMsFromFile attempting to load: %s", WideToUTF8Converter(file_path.c_str()).c_str());
     
     std::string json_content;
     try {
@@ -818,7 +819,7 @@ NOTAMGlue::LoadNOTAMsFromFile(std::vector<NOTAMStruct> &notams) const
         json_content.append(buffer, bytes_read);
       }
     } catch (const std::exception &e) {
-      LogFormat("NOTAM: LoadNOTAMsFromFile failed to open file: %s - %s", file_path.c_str(), e.what());
+      LogFormat("NOTAM: LoadNOTAMsFromFile failed to open file: %s - %s", WideToUTF8Converter(file_path.c_str()).c_str(), e.what());
       return false; // File doesn't exist or can't be opened
     }
     
