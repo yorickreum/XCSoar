@@ -34,11 +34,14 @@ using NOTAMStruct = struct NOTAM;
 #include <algorithm>
 
 // Helper function to safely get a displayable string
-static const char* SafeString(const std::string &input) {
-  if (input.empty() || ValidateUTF8(input)) {
-    return input.c_str();
+static tstring SafeString(const std::string &input) {
+  if (input.empty()) {
+    return tstring();
   }
-  return "[Invalid text]";
+  if (!ValidateUTF8(input)) {
+    return _T("[Invalid text]");
+  }
+  return tstring(input.begin(), input.end());
 }
 
 class NOTAMListWidget final : public ListWidget {
@@ -97,11 +100,11 @@ NOTAMListWidget::OnPaintItem(Canvas &canvas, const PixelRect rc,
   const auto &notam = items[i];
   
   // Use safe strings to prevent UTF-8 assertion failures
-  row_renderer.DrawFirstRow(canvas, rc, SafeString(notam.number));
+  row_renderer.DrawFirstRow(canvas, rc, SafeString(notam.number).c_str());
   
   // Draw the second row with the detailed text if it exists
   if (!notam.text.empty()) {
-    row_renderer.DrawSecondRow(canvas, rc, SafeString(notam.text));
+    row_renderer.DrawSecondRow(canvas, rc, SafeString(notam.text).c_str());
   }
 }
 
@@ -313,9 +316,9 @@ NOTAMListWidget::ClearNOTAMs()
   try {
     auto cache_path = net_components->notam->GetNOTAMCacheFilePath();
     if (File::Delete(cache_path)) {
-      LogFormat("NOTAM: Cache file deleted: %s", cache_path.c_str());
+      LogFormat("NOTAM: Cache file deleted: %s", cache_path.ToUTF8().c_str());
     } else {
-      LogFormat("NOTAM: Failed to delete cache file: %s", cache_path.c_str());
+      LogFormat("NOTAM: Failed to delete cache file: %s", cache_path.ToUTF8().c_str());
     }
   } catch (const std::exception &e) {
     LogFormat("NOTAM: Error deleting cache file: %s", e.what());
