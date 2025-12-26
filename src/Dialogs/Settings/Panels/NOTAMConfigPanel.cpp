@@ -29,16 +29,11 @@ enum ControlIndex {
   RefreshInterval,
   LastUpdate,
   DistanceFromLastUpdate,
-  FeatureTypeFilterSpacer,
-  ShowAirspace,
-  ShowObst,
-  ShowMilitary,
-  ShowOther,
-  ShowTrigger,
-  TrafficFilterSpacer,
-  ShowTrafficIFR,
-  ShowTrafficVFR,
-  ShowTrafficBoth
+  FilterSpacer,
+  ShowIFR,
+  ShowOnlyEffective,
+  QCodeSpacer,
+  HiddenQCodes
 #endif
 };
 
@@ -117,45 +112,27 @@ NOTAMConfigPanel::Prepare([[maybe_unused]] ContainerWindow &parent,
       AddReadOnly(_("Distance From Last Update"), nullptr, _("Unknown"));
     }
 
-    // Feature type filtering (simplified for glider pilots)
+    // Filter options
     AddSpacer();
-    AddBoolean(_("Show AIRSPACE NOTAMs"),
-               _("Airspace restrictions and changes (essential for flight planning)."),
-               computer.notam.show_airspace);
+    AddBoolean(_("Show IFR NOTAMs"),
+               _("Include NOTAMs applicable to IFR traffic (IFR-only and IFR+VFR). VFR-only NOTAMs are always shown."),
+               computer.notam.show_ifr);
 
-    AddBoolean(_("Show OBST (Obstacle) NOTAMs"),
-               _("Obstacles, towers, cranes, construction (important for low-level flying)."),
-               computer.notam.show_obst);
+    AddBoolean(_("Show Only Currently Effective"),
+               _("Filter out NOTAMs that are not currently in effect."),
+               computer.notam.show_only_effective);
 
-    AddBoolean(_("Show MILITARY NOTAMs"),
-               _("Military exercises and operations (can create temporary restricted airspace)."),
-               computer.notam.show_military);
-
-    AddBoolean(_("Show Other NOTAMs"),
-               _("All other NOTAM types including airports, navigation aids, procedures, etc."),
-               computer.notam.show_other);
-    SetExpertRow(ShowOther);
-
-    AddBoolean(_("Show TRIGGER NOTAMs"),
-               _("NOTAMs containing 'TRIGGER NOTAM' text (informational only, not active restrictions)."),
-               computer.notam.show_trigger);
-    SetExpertRow(ShowTrigger);
-
+    // Q-code filter (comma-separated list)
     AddSpacer();
-    SetExpertRow(TrafficFilterSpacer);
-
-    AddBoolean(_("Show IFR-only NOTAMs"),
-               _("NOTAMs applicable only to IFR traffic (typically less relevant for VFR gliders)."),
-               computer.notam.show_traffic_ifr);
-    SetExpertRow(ShowTrafficIFR);
-
-    AddBoolean(_("Show VFR-only NOTAMs"),
-               _("NOTAMs applicable only to VFR traffic."),
-               computer.notam.show_traffic_vfr);
-
-    AddBoolean(_("Show IFR+VFR NOTAMs"),
-               _("NOTAMs applicable to both IFR and VFR traffic."),
-               computer.notam.show_traffic_both);
+    SetExpertRow(QCodeSpacer);
+    
+    AddText(_("Hidden Q-Codes"),
+            _("Comma-separated list of Q-code prefixes to hide. "
+              "Available: QA (Aerodrome), QF (Facilities), QK (Admin), "
+              "QM (Movement), QN (NAVAIDs), QO (Obstacles), QOL (Lights), "
+              "QR (Runway), QW (Warnings). Example: QK,QN,QOL"),
+            computer.notam.hidden_qcodes.c_str());
+    SetExpertRow(HiddenQCodes);
 
   // Set initial visibility based on enabled state
   UpdateVisibility();
@@ -207,11 +184,11 @@ NOTAMConfigPanel::UpdateVisibility() noexcept
   SetRowAvailable(RefreshInterval, enabled);
   SetRowAvailable(LastUpdate, enabled);
   SetRowAvailable(DistanceFromLastUpdate, enabled);
-  SetRowAvailable(FeatureTypeFilterSpacer, enabled);
-  SetRowAvailable(ShowAirspace, enabled);
-  SetRowAvailable(ShowObst, enabled);
-  SetRowAvailable(ShowMilitary, enabled);
-  SetRowAvailable(ShowOther, enabled);
+  SetRowAvailable(FilterSpacer, enabled);
+  SetRowAvailable(ShowIFR, enabled);
+  SetRowAvailable(ShowOnlyEffective, enabled);
+  SetRowAvailable(QCodeSpacer, enabled);
+  SetRowAvailable(HiddenQCodes, enabled);
 #endif
 }
 
@@ -285,15 +262,12 @@ NOTAMConfigPanel::Save(bool &_changed) noexcept
   changed |= SaveValueInteger(NOTAMRadius, ProfileKeys::NOTAMRadius, computer.notam.radius_km);
   changed |= SaveValueInteger(RefreshInterval, ProfileKeys::NOTAMRefreshInterval, computer.notam.refresh_interval_min);
 
-  // Feature type filtering (simplified)
-  changed |= SaveValue(ShowAirspace, ProfileKeys::NOTAMShowAirspace, computer.notam.show_airspace);
-  changed |= SaveValue(ShowObst, ProfileKeys::NOTAMShowObst, computer.notam.show_obst);
-  changed |= SaveValue(ShowMilitary, ProfileKeys::NOTAMShowMilitary, computer.notam.show_military);
-  changed |= SaveValue(ShowOther, ProfileKeys::NOTAMShowOther, computer.notam.show_other);
-  changed |= SaveValue(ShowTrigger, ProfileKeys::NOTAMShowTrigger, computer.notam.show_trigger);
-  changed |= SaveValue(ShowTrafficIFR, ProfileKeys::NOTAMShowTrafficIFR, computer.notam.show_traffic_ifr);
-  changed |= SaveValue(ShowTrafficVFR, ProfileKeys::NOTAMShowTrafficVFR, computer.notam.show_traffic_vfr);
-  changed |= SaveValue(ShowTrafficBoth, ProfileKeys::NOTAMShowTrafficBoth, computer.notam.show_traffic_both);
+  // Filter settings
+  changed |= SaveValue(ShowIFR, ProfileKeys::NOTAMShowIFR, computer.notam.show_ifr);
+  changed |= SaveValue(ShowOnlyEffective, ProfileKeys::NOTAMShowOnlyEffective, computer.notam.show_only_effective);
+  
+  // Q-code filter (comma-separated string)
+  changed |= SaveValue(HiddenQCodes, ProfileKeys::NOTAMHiddenQCodes, computer.notam.hidden_qcodes);
 #endif
 
   _changed |= changed;

@@ -405,66 +405,82 @@ NOTAMGlue::TestNOTAMFetch(const GeoPoint &location)
 }
 
 /**
+ * Check if a Q-code is in the hidden list
+ */
+static bool
+IsQCodeHidden(const std::string &qcode, const std::string &hidden_list)
+{
+  if (qcode.empty() || hidden_list.empty())
+    return false;
+  
+  // Check for exact match (e.g., "QOL") or prefix match (e.g., "QO,")
+  // Need to handle: "QOL", ",QOL", "QOL,", ",QOL,"
+  std::string search_exact = qcode;
+  std::string search_start = qcode + ",";
+  std::string search_end = "," + qcode;
+  std::string search_middle = "," + qcode + ",";
+  
+  return (hidden_list == search_exact ||
+          hidden_list.find(search_start) == 0 ||
+          hidden_list.find(search_end) == hidden_list.length() - search_end.length() ||
+          hidden_list.find(search_middle) != std::string::npos);
+}
+
+/**
  * Check if a NOTAM should be displayed based on filter settings
  */
 static bool
 ShouldDisplayNOTAM(const NOTAMStruct &notam, const NOTAMSettings &settings)
 {
-  // Check traffic type filter (I=IFR, V=VFR, IV=both)
-  if (!notam.traffic.empty()) {
-    if (notam.traffic == "I" && !settings.show_traffic_ifr) {
-      LogFormat("NOTAM Filter: %s is IFR-only (traffic=I), filtered out", notam.number.c_str());
-      return false;
-    }
-    if (notam.traffic == "V" && !settings.show_traffic_vfr) {
-      LogFormat("NOTAM Filter: %s is VFR-only (traffic=V), filtered out", notam.number.c_str());
-      return false;
-    }
-    if (notam.traffic == "IV" && !settings.show_traffic_both) {
-      LogFormat("NOTAM Filter: %s is IFR+VFR (traffic=IV), filtered out", notam.number.c_str());
+  // Check IFR filter (I=IFR-only, V=VFR-only, IV=both)
+  if (!settings.show_ifr && !notam.traffic.empty()) {
+    if (notam.traffic == "I" || notam.traffic == "IV") {
+      LogFormat("NOTAM Filter: %s is IFR traffic (%s), filtered out", 
+                notam.number.c_str(), notam.traffic.c_str());
       return false;
     }
   }
   
-  // Check for TRIGGER NOTAM filter first (text-based)
-  if (!settings.show_trigger) {
-    // Check if "TRIGGER NOTAM" appears in the text field
-    if (notam.text.find("TRIGGER NOTAM") != std::string::npos) {
-      LogFormat("NOTAM Filter: %s contains 'TRIGGER NOTAM', filtered out by show_trigger=false",
-                notam.number.c_str());
+  // Check if currently effective (if filter enabled)
+  if (settings.show_only_effective) {
+    auto now = std::chrono::system_clock::now();
+    if (now < notam.start_time || now > notam.end_time) {
+      LogFormat("NOTAM Filter: %s not currently effective, filtered out", notam.number.c_str());
       return false;
     }
   }
   
-  // feature_type actually contains the selectionCode (ICAO Q-code)
+  // Check Q-code filters
   const auto &qcode = notam.feature_type;
   
   if (qcode.empty()) {
-    LogFormat("NOTAM Filter: %s has NO Q-code, treating as 'other' (show_other=%d)",
-              notam.number.c_str(), (int)settings.show_other);
-    return settings.show_other;
+    // No Q-code - show by default
+    return true;
   }
   
   LogFormat("NOTAM Filter: %s Q-code='%s'", notam.number.c_str(), qcode.c_str());
   
-  // Q-codes starting with QR = Restricted/Danger areas (airspace)
-  // Q-codes starting with QD = Danger areas (airspace)
-  if (qcode.length() >= 2 && (qcode.substr(0, 2) == "QR" || qcode.substr(0, 2) == "QD")) {
-    return settings.show_airspace;
+  // Check if this Q-code is in the hidden list
+  if (qcode.length() >= 2) {
+    // First check for 3-character code (e.g., QOL)
+    if (qcode.length() >= 3) {
+      std::string code3 = qcode.substr(0, 3);
+      if (IsQCodeHidden(code3, settings.hidden_qcodes)) {
+        LogFormat("NOTAM Filter: %s Q-code %s is hidden", notam.number.c_str(), code3.c_str());
+        return false;
+      }
+    }
+    
+    // Then check 2-character code (e.g., QO, QW)
+    std::string code2 = qcode.substr(0, 2);
+    if (IsQCodeHidden(code2, settings.hidden_qcodes)) {
+      LogFormat("NOTAM Filter: %s Q-code %s is hidden", notam.number.c_str(), code2.c_str());
+      return false;
+    }
   }
   
-  // Q-codes starting with QO = Obstacles
-  if (qcode.length() >= 2 && qcode.substr(0, 2) == "QO") {
-    return settings.show_obst;
-  }
-  
-  // Q-codes starting with QW = Warnings (includes military exercises, UAS ops)
-  if (qcode.length() >= 2 && qcode.substr(0, 2) == "QW") {
-    return settings.show_military;
-  }
-  
-  // Everything else (aerodromes, navaids, procedures, etc.)
-  return settings.show_other;
+  // Not filtered - show it
+  return true;
 }
 
 void

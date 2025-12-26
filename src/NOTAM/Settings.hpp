@@ -3,8 +3,6 @@
 
 #pragma once
 
-#include <chrono>
-
 /**
  * Settings for NOTAM (Notice to Airmen) support
  */
@@ -12,55 +10,38 @@ struct NOTAMSettings {
   /** Enable/disable NOTAM loading */
   bool enabled = false;
   
-  /** Radius around current location to search for NOTAMs (in kilometers) */
+  /** Radius around current location to fetch NOTAMs for */
   unsigned radius_km = 50;
   
   /** Maximum number of NOTAMs to fetch */
   unsigned max_notams = 500;
   
-  /** Refresh interval (in minutes) - 0 = manual only */
-  unsigned refresh_interval_min = 60;
+  /** Refresh interval - 0 = manual only */
+  unsigned refresh_interval_min = 30;
   
   /** Base URL for the NOTAM API */
   const char *api_base_url = "https://enroute-data.akaflieg-freiburg.de/enrouteProxy/notam.php";
+
+  /** Show only currently effective NOTAMs */
+  bool show_only_effective = true;
   
-  /** Filter NOTAMs that are only active during daylight (sunrise to sunset) */
-  bool filter_daylight_only = false;
+  /** Show IFR-only NOTAMs ("traffic" == "I") */
+  bool show_ifr = false;
   
-  /** Filter NOTAMs that are only active during night (sunset to sunrise) */
-  bool filter_night_only = false;
-  
-  /** Hours before sunrise to include NOTAMs (-1 = disabled) */
-  int hours_before_sunrise = -1;
-  
-  /** Hours after sunset to include NOTAMs (-1 = disabled) */
-  int hours_after_sunset = -1;
-  
-  /** Filter by NOTAM series (empty = show all) */
-  std::string filter_series = "";
-  
-  // Feature type filters (simplified for glider pilots - based on official NOTAM API)
-  /** Show AIRSPACE-related NOTAMs (airspace restrictions) */
-  bool show_airspace = true;
-  
-  /** Show OBST (obstacle) NOTAMs (towers, cranes, construction) */
-  bool show_obst = true;
-  
-  /** Show MILITARY NOTAMs (military exercises, operations) */
-  bool show_military = true;
-  
-  /** Show other/unclassified NOTAMs (AD, RWY, NAV, COM, procedures, etc.) */
-  bool show_other = false;
-  
-  /** Show TRIGGER NOTAMs (NOTAMs containing "TRIGGER NOTAM" text) */
-  bool show_trigger = false;
-  
-  /** Show IFR-only NOTAMs (traffic=I) */
-  bool show_traffic_ifr = false;
-  
-  /** Show VFR-only NOTAMs (traffic=V) */
-  bool show_traffic_vfr = true;
-  
-  /** Show IFR and VFR NOTAMs (traffic=IV) */
-  bool show_traffic_both = true;
+  /** 
+   * Comma-separated list of Q-code prefixes to hide.
+   * Default: "QK,QN,QOL" (hide checklist/admin, navaids, obstacle lights)
+   * 
+   * Q-code meanings (selection, see https://www.faa.gov/air_traffic/publications/atpubs/notam_html/appendix_b.html):
+   * - QA: Aerodrome / large area operational info
+   * - QF: Facilities & services
+   * - QK: Checklist / Admin
+   * - QM: Movement area / runway / taxiways
+   * - QN: NAVAIDs
+   * - QO: Obstacles (excluding QOL)
+   * - QOL: Obstacle Lights
+   * - QR: Runway / ops status
+   * - QW: Airspace warnings / hazards
+   */
+  std::string hidden_qcodes = "QK,QN,QOL";
 };
