@@ -85,15 +85,20 @@ NOTAMGlue::OnTimer(const GeoPoint &current_location)
   std::time_t last_time = GetLastUpdateTime();
   std::time_t now = std::time(nullptr);
   
-  // Check if time interval has elapsed
+  // Check if time interval has elapsed since last successful fetch
   bool time_expired = (last_time == 0) || 
                       (now - last_time >= settings.refresh_interval_min * 60);
+  
+  // Also check if enough time has passed since last attempt (even if it failed)
+  // This prevents rapid retries when there's no network connection
+  // Wait at least 60 seconds between attempts
+  bool enough_time_since_attempt = (now - last_attempt_time >= 60);
   
   // Check if location moved outside half the radius
   bool location_changed = last_loc.IsValid() && 
                           current_location.Distance(last_loc) > (settings.radius_km * 1000.0 / 2.0);
   
-  if (time_expired || location_changed) {
+  if ((time_expired || location_changed) && enough_time_since_attempt) {
     UpdateLocation(current_location);
   }
 }
@@ -119,6 +124,7 @@ NOTAMGlue::UpdateLocation(const GeoPoint &location)
     loading = true;
     retry_pending = false;
     current_location = location;
+    last_attempt_time = std::time(nullptr);  // Record attempt time
   }
   
   // Log only when we actually start a fetch

@@ -11,6 +11,7 @@
 #include "RateLimiter.hpp"
 #include <vector>
 #include <memory>
+#include <ctime>
 
 class CurlGlobal;
 struct NOTAM; // Explicit forward declaration
@@ -41,6 +42,9 @@ class NOTAMGlue : public RateLimiter {
   
   /** Whether a retry is pending (waiting for RateLimiter timer) */
   bool retry_pending = false;
+  
+  /** Timestamp of last fetch attempt (success or failure) to prevent rapid retries */
+  std::time_t last_attempt_time = 0;
 
 public:
   NOTAMGlue(const NOTAMSettings &_settings, CurlGlobal &_curl);

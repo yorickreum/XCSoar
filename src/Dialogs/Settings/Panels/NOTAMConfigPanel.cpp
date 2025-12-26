@@ -55,6 +55,7 @@ public:
 public:
   void Prepare(ContainerWindow &parent, const PixelRect &rc) noexcept override;
   void Show(const PixelRect &rc) noexcept override;
+  void Hide() noexcept override;
   bool Save(bool &changed) noexcept override;
 
 private:
@@ -126,7 +127,7 @@ NOTAMConfigPanel::Prepare([[maybe_unused]] ContainerWindow &parent,
   AddReadOnly(_("NOTAMs"), nullptr, buffer);
 
   _stprintf(buffer, _T("%u visible"), stats.final_count);
-  AddReadOnly(_("Final Count"), nullptr, buffer);
+  AddReadOnly(_("After Filtering"), nullptr, buffer);
 
   // Filter settings with counts
   AddBoolean(_("Show IFR-Only NOTAMs"),
@@ -181,6 +182,18 @@ NOTAMConfigPanel::Show(const PixelRect &rc) noexcept
 #endif
 
   RowFormWidget::Show(rc);
+}
+
+void
+NOTAMConfigPanel::Hide() noexcept
+{
+#ifdef HAVE_HTTP
+  timer.Cancel();
+  RowFormWidget::Hide();
+  ConfigPanel::ReturnExtraButton(1);
+#else
+  RowFormWidget::Hide();
+#endif
 }
 
 void
