@@ -5,6 +5,8 @@
 
 #include "util/StaticString.hxx"
 
+#include <tchar.h>
+
 /**
  * Settings for NOTAM (Notice to Airmen) support
  */
@@ -55,5 +57,9 @@ struct NOTAMSettings {
    * - QR: Runway / ops status
    * - QW: Airspace warnings / hazards
    */
-  StaticString<64> hidden_qcodes{"QA QK QN QOA QOBTT QOL"};
+  StaticString<64> hidden_qcodes;
+  
+  void SetDefaults() noexcept {
+    hidden_qcodes = _T("QA QK QN QOA QOBTT QOL");
+  }
 };
