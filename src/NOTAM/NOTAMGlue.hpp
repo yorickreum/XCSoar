@@ -123,6 +123,33 @@ public:
    */
   void InvalidateCache();
 
+  /**
+   * Statistics about filter results
+   */
+  struct FilterStats {
+    unsigned total;              // Total NOTAMs loaded
+    unsigned filtered_by_ifr;    // Count filtered by IFR filter
+    unsigned filtered_by_time;   // Count filtered by time filter
+    unsigned filtered_by_qcode;  // Count filtered by Q-code filter
+    unsigned filtered_by_radius; // Count filtered by radius filter
+    unsigned final_count;        // Final count after all filters
+  };
+
+  /**
+   * Get the total number of currently loaded NOTAMs
+   */
+  unsigned GetTotalCount() const;
+
+  /**
+   * Get the number of NOTAMs that pass the current filters
+   */
+  unsigned GetFilteredCount() const;
+
+  /**
+   * Get detailed filter statistics showing how many NOTAMs each filter removes
+   */
+  FilterStats GetFilterStats() const;
+
 private:
   Co::InvokeTask LoadNOTAMsInternal(GeoPoint location);
   void OnLoadComplete(std::exception_ptr error) noexcept;

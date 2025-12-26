@@ -26,6 +26,12 @@ struct NOTAM {
   /** NOTAM number (e.g., A1234/24) */
   std::string number;
   
+  /** NOTAM series (e.g., F, M, B, W) */
+  std::string series;
+  
+  /** NOTAM type (R=Replace, N=New, C=Cancel) */
+  std::string type;
+  
   /** Detailed NOTAM text */
   std::string text;
   

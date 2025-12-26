@@ -9,6 +9,7 @@
 #include "Form/DataField/Listener.hpp"
 #include "Form/DataField/Boolean.hpp"
 #include "Profile/Keys.hpp"
+#include "Profile/Profile.hpp"
 #include "Language/Language.hpp"
 #include "Airspace/AirspaceComputerSettings.hpp"
 #include "Interface.hpp"
@@ -18,6 +19,8 @@
 #include "Components.hpp"
 #include "NOTAM/NOTAMGlue.hpp"
 #include "Formatter/UserUnits.hpp"
+#include "Units/Units.hpp"
+#include "Units/Descriptor.hpp"
 #include "ui/event/PeriodicTimer.hpp"
 
 #include <ctime>
@@ -29,11 +32,16 @@ enum ControlIndex {
   RefreshInterval,
   LastUpdate,
   DistanceFromLastUpdate,
-  FilterSpacer,
+  TotalNOTAMs,
+  FinalCount,
   ShowIFR,
+  IFRFiltered,
   ShowOnlyEffective,
-  QCodeSpacer,
-  HiddenQCodes
+  TimeFiltered,
+  MaxRadius,
+  RadiusFiltered,
+  HiddenQCodes,
+  QCodeFiltered
 #endif
 };
 
@@ -68,73 +76,94 @@ NOTAMConfigPanel::Prepare([[maybe_unused]] ContainerWindow &parent,
     CommonInterface::GetComputerSettings().airspace;
 
   AddBoolean(_("NOTAM Support"),
-             _("Enable downloading and display of NOTAMs (Notice to Airmen) from aviation authorities. "
-               "NOTAMs provide temporary airspace restrictions and operational information."),
+             _("Enable downloading and display of NOTAMs from aviation authorities."),
              computer.notam.enabled, this);
 
-  // Add all rows but control visibility based on enabled state
-    AddInteger(_("NOTAM Radius (km)"),
-               _("Search radius around current location for NOTAMs in kilometers. "
-                 "Larger values download more NOTAMs but may affect performance."),
-               _T("%d km"), _T("%d"), 1, 500, 10,
-               computer.notam.radius_km);
+  AddInteger(_("Search Radius (km)"),
+             _("Radius around current location to fetch NOTAMs."),
+             _T("%d km"), _T("%d"), 1, 500, 10,
+             computer.notam.radius_km);
 
-    AddInteger(_("Auto-Refresh Interval"),
-               _("Automatically refresh NOTAMs every X minutes during flight. Set to 0 to disable automatic updates."),
-               _T("%d min"), _T("%d"), 0, 240, 15,
-               computer.notam.refresh_interval_min);
+  AddInteger(_("Auto-Refresh (minutes)"),
+             _("Automatically refresh NOTAMs every X minutes. Set to 0 to disable."),
+             _T("%d min"), _T("%d"), 0, 240, 15,
+             computer.notam.refresh_interval_min);
 
-    // Display last update time & distance from update location
-    std::time_t last_update = 0;
-    GeoPoint last_loc = GeoPoint::Invalid();
-    if (net_components && net_components->notam) {
-      last_update = net_components->notam->GetLastUpdateTime();
-      last_loc = net_components->notam->GetLastUpdateLocation();
-    }
+  // Display last update time & distance
+  std::time_t last_update = 0;
+  GeoPoint last_loc = GeoPoint::Invalid();
+  if (net_components && net_components->notam) {
+    last_update = net_components->notam->GetLastUpdateTime();
+    last_loc = net_components->notam->GetLastUpdateLocation();
+  }
 
-    if (last_update > 0) {
-      char time_buffer[32];
-      std::strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M", std::localtime(&last_update));
-      AddReadOnly(_("Last Update"), nullptr, time_buffer);
-    } else {
-      AddReadOnly(_("Last Update"), nullptr, _("Never"));
-    }
+  if (last_update > 0) {
+    char time_buffer[32];
+    std::strftime(time_buffer, sizeof(time_buffer), "%Y-%m-%d %H:%M", std::localtime(&last_update));
+    AddReadOnly(_("Last Update"), nullptr, time_buffer);
+  } else {
+    AddReadOnly(_("Last Update"), nullptr, _("Never"));
+  }
 
-    // Distance from last update location (if both valid)
-    const auto &basic = CommonInterface::Basic();
-    if (basic.location.IsValid() && last_loc.IsValid()) {
-      double dist_m = basic.location.Distance(last_loc);
-      TCHAR dist_buffer[32];
-      // Use smart formatting (switching to small units when appropriate)
-      FormatUserDistanceSmart(dist_m, dist_buffer, true, 1000.0, 9.999);
-      AddReadOnly(_("Distance From Last Update"), nullptr, dist_buffer);
-    } else {
-      AddReadOnly(_("Distance From Last Update"), nullptr, _("Unknown"));
-    }
+  const auto &basic = CommonInterface::Basic();
+  if (basic.location.IsValid() && last_loc.IsValid()) {
+    double dist_m = basic.location.Distance(last_loc);
+    TCHAR dist_buffer[32];
+    FormatUserDistanceSmart(dist_m, dist_buffer, true, 1000.0, 9.999);
+    AddReadOnly(_("Distance From Last Update"), nullptr, dist_buffer);
+  } else {
+    AddReadOnly(_("Distance From Last Update"), nullptr, _("Unknown"));
+  }
 
-    // Filter options
-    AddSpacer();
-    AddBoolean(_("Show IFR NOTAMs"),
-               _("Include NOTAMs applicable to IFR traffic (IFR-only and IFR+VFR). VFR-only NOTAMs are always shown."),
-               computer.notam.show_ifr);
+  // Get NOTAM statistics
+  NOTAMGlue::FilterStats stats = {};
+  if (net_components && net_components->notam) {
+    stats = net_components->notam->GetFilterStats();
+  }
+  
+  TCHAR buffer[64];
+  _stprintf(buffer, _T("%u total"), stats.total);
+  AddReadOnly(_("NOTAMs"), nullptr, buffer);
 
-    AddBoolean(_("Show Only Currently Effective"),
-               _("Filter out NOTAMs that are not currently in effect."),
-               computer.notam.show_only_effective);
+  _stprintf(buffer, _T("%u visible"), stats.final_count);
+  AddReadOnly(_("Final Count"), nullptr, buffer);
 
-    // Q-code filter (comma-separated list)
-    AddSpacer();
-    SetExpertRow(QCodeSpacer);
-    
-    AddText(_("Hidden Q-Codes"),
-            _("Comma-separated list of Q-code prefixes to hide. "
-              "Available: QA (Aerodrome), QF (Facilities), QK (Admin), "
-              "QM (Movement), QN (NAVAIDs), QO (Obstacles), QOL (Lights), "
-              "QR (Runway), QW (Warnings). Example: QK,QN,QOL"),
-            computer.notam.hidden_qcodes.c_str());
-    SetExpertRow(HiddenQCodes);
+  // Filter settings with counts
+  AddBoolean(_("Show IFR-Only NOTAMs"),
+             _("Include NOTAMs for IFR traffic only."),
+             computer.notam.show_ifr);
+  _stprintf(buffer, _T("%u filtered"), stats.filtered_by_ifr);
+  AddReadOnly(_T(""), nullptr, buffer);
 
-  // Set initial visibility based on enabled state
+  AddBoolean(_("Show Only Currently Effective"),
+             _("Filter out NOTAMs not currently in effect."),
+             computer.notam.show_only_effective);
+  _stprintf(buffer, _T("%u filtered"), stats.filtered_by_time);
+  AddReadOnly(_T(""), nullptr, buffer);
+
+  // Radius filter with user units
+  Unit distance_unit = Units::GetUserDistanceUnit();
+  double max_radius_user = Units::ToUserDistance(computer.notam.max_radius_m);
+  const TCHAR *unit_name = Units::GetUnitName(distance_unit);
+  
+  TCHAR format_display[32], format_edit[32];
+  _stprintf(format_display, _T("%%.0f %s"), unit_name);
+  _stprintf(format_edit, _T("%%.0f"));
+  
+  AddFloat(_("Maximum NOTAM Radius"),
+           _("Filter out NOTAMs with radius larger than this. Set to 0 to disable."),
+           format_display, format_edit,
+           0, 1000, 10, 0,
+           max_radius_user, this);
+  _stprintf(buffer, _T("%u filtered"), stats.filtered_by_radius);
+  AddReadOnly(_T(""), nullptr, buffer);
+
+  AddText(_("Hidden Q-Codes"),
+          _("Space-separated Q-code prefixes to hide (e.g., QA QK QN QOA QOL)."),
+          computer.notam.hidden_qcodes.c_str());
+  _stprintf(buffer, _T("%u filtered"), stats.filtered_by_qcode);
+  AddReadOnly(_T(""), nullptr, buffer);
+
   UpdateVisibility();
 #endif
 }
@@ -184,11 +213,16 @@ NOTAMConfigPanel::UpdateVisibility() noexcept
   SetRowAvailable(RefreshInterval, enabled);
   SetRowAvailable(LastUpdate, enabled);
   SetRowAvailable(DistanceFromLastUpdate, enabled);
-  SetRowAvailable(FilterSpacer, enabled);
+  SetRowAvailable(TotalNOTAMs, enabled);
   SetRowAvailable(ShowIFR, enabled);
+  SetRowAvailable(IFRFiltered, enabled);
   SetRowAvailable(ShowOnlyEffective, enabled);
-  SetRowAvailable(QCodeSpacer, enabled);
+  SetRowAvailable(TimeFiltered, enabled);
+  SetRowAvailable(MaxRadius, enabled);
+  SetRowAvailable(RadiusFiltered, enabled);
   SetRowAvailable(HiddenQCodes, enabled);
+  SetRowAvailable(QCodeFiltered, enabled);
+  SetRowAvailable(FinalCount, enabled);
 #endif
 }
 
@@ -230,6 +264,31 @@ NOTAMConfigPanel::RefreshDisplayFields() noexcept
   } else {
     SetText(DistanceFromLastUpdate, _("Unknown"));
   }
+
+  // Update NOTAM statistics
+  NOTAMGlue::FilterStats stats = {};
+  if (net_components && net_components->notam) {
+    stats = net_components->notam->GetFilterStats();
+  }
+  
+  TCHAR buffer[64];
+  _stprintf(buffer, _T("%u total"), stats.total);
+  SetText(TotalNOTAMs, buffer);
+  
+  _stprintf(buffer, _T("%u visible"), stats.final_count);
+  SetText(FinalCount, buffer);
+  
+  _stprintf(buffer, _T("%u filtered"), stats.filtered_by_ifr);
+  SetText(IFRFiltered, buffer);
+  
+  _stprintf(buffer, _T("%u filtered"), stats.filtered_by_time);
+  SetText(TimeFiltered, buffer);
+  
+  _stprintf(buffer, _T("%u filtered"), stats.filtered_by_radius);
+  SetText(RadiusFiltered, buffer);
+  
+  _stprintf(buffer, _T("%u filtered"), stats.filtered_by_qcode);
+  SetText(QCodeFiltered, buffer);
 #endif
 }
 
@@ -266,7 +325,15 @@ NOTAMConfigPanel::Save(bool &_changed) noexcept
   changed |= SaveValue(ShowIFR, ProfileKeys::NOTAMShowIFR, computer.notam.show_ifr);
   changed |= SaveValue(ShowOnlyEffective, ProfileKeys::NOTAMShowOnlyEffective, computer.notam.show_only_effective);
   
-  // Q-code filter (comma-separated string)
+  // Radius filter - convert from user units to meters
+  double max_radius_user = GetValueFloat(MaxRadius);
+  unsigned max_radius_m = (unsigned)Units::ToSysDistance(max_radius_user);
+  if (computer.notam.max_radius_m != max_radius_m) {
+    computer.notam.max_radius_m = max_radius_m;
+    Profile::Set(ProfileKeys::NOTAMMaxRadius, max_radius_m);
+    changed = true;
+  }
+  
   changed |= SaveValue(HiddenQCodes, ProfileKeys::NOTAMHiddenQCodes, computer.notam.hidden_qcodes);
 #endif
 

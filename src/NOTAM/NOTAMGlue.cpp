@@ -392,6 +392,83 @@ NOTAMGlue::InvalidateCache()
   }
 }
 
+// Forward declarations
+static bool ShouldDisplayNOTAM(const NOTAMStruct &notam, const NOTAMSettings &settings);
+static bool IsQCodeHidden(const std::string &qcode, const char *hidden_list);
+
+unsigned
+NOTAMGlue::GetTotalCount() const
+{
+  const std::lock_guard<Mutex> lock(mutex);
+  auto *impl = static_cast<const NOTAMImpl*>(current_notams_impl);
+  return static_cast<unsigned>(impl->current_notams.size());
+}
+
+unsigned
+NOTAMGlue::GetFilteredCount() const
+{
+  const std::lock_guard<Mutex> lock(mutex);
+  auto *impl = static_cast<const NOTAMImpl*>(current_notams_impl);
+  
+  unsigned count = 0;
+  for (const auto &notam : impl->current_notams) {
+    if (ShouldDisplayNOTAM(notam, settings)) {
+      count++;
+    }
+  }
+  return count;
+}
+
+NOTAMGlue::FilterStats
+NOTAMGlue::GetFilterStats() const
+{
+  const std::lock_guard<Mutex> lock(mutex);
+  auto *impl = static_cast<const NOTAMImpl*>(current_notams_impl);
+  
+  FilterStats stats;
+  stats.total = static_cast<unsigned>(impl->current_notams.size());
+  stats.filtered_by_ifr = 0;
+  stats.filtered_by_time = 0;
+  stats.filtered_by_qcode = 0;
+  stats.filtered_by_radius = 0;
+  stats.final_count = 0;
+  
+  for (const auto &notam : impl->current_notams) {
+    // Count how many fail IFR filter (independently)
+    if (!settings.show_ifr && !notam.traffic.empty() && notam.traffic == "I") {
+      stats.filtered_by_ifr++;
+    }
+    
+    // Count how many fail time filter (independently)
+    if (settings.show_only_effective) {
+      auto now = std::chrono::system_clock::now();
+      if (now < notam.start_time || now > notam.end_time) {
+        stats.filtered_by_time++;
+      }
+    }
+    
+    // Count how many fail Q-code filter (independently)
+    const auto &qcode = notam.feature_type;
+    if (!qcode.empty() && IsQCodeHidden(qcode, settings.hidden_qcodes.c_str())) {
+      stats.filtered_by_qcode++;
+    }
+    
+    // Count how many fail radius filter (independently)
+    if (settings.max_radius_m > 0) {
+      if (notam.geometry.radius_meters > settings.max_radius_m) {
+        stats.filtered_by_radius++;
+      }
+    }
+    
+    // Use the main filter function for final count
+    if (ShouldDisplayNOTAM(notam, settings)) {
+      stats.final_count++;
+    }
+  }
+  
+  return stats;
+}
+
 int
 NOTAMGlue::TestNOTAMFetch(const GeoPoint &location)
 {
@@ -405,25 +482,47 @@ NOTAMGlue::TestNOTAMFetch(const GeoPoint &location)
 }
 
 /**
- * Check if a Q-code is in the hidden list
+ * Check if a Q-code matches any prefix in the hidden list
+ * E.g., if hidden_list contains "QO", it will match "QOLX", "QOAX", etc.
+ * Supports both space and comma separators.
  */
 static bool
-IsQCodeHidden(const std::string &qcode, const std::string &hidden_list)
+IsQCodeHidden(const std::string &qcode, const char *hidden_list)
 {
-  if (qcode.empty() || hidden_list.empty())
+  if (qcode.empty() || !hidden_list || *hidden_list == '\0')
     return false;
   
-  // Check for exact match (e.g., "QOL") or prefix match (e.g., "QO,")
-  // Need to handle: "QOL", ",QOL", "QOL,", ",QOL,"
-  std::string search_exact = qcode;
-  std::string search_start = qcode + ",";
-  std::string search_end = "," + qcode;
-  std::string search_middle = "," + qcode + ",";
+  const size_t list_len = strlen(hidden_list);
   
-  return (hidden_list == search_exact ||
-          hidden_list.find(search_start) == 0 ||
-          hidden_list.find(search_end) == hidden_list.length() - search_end.length() ||
-          hidden_list.find(search_middle) != std::string::npos);
+  // Parse space or comma-separated list and check if qcode starts with any prefix
+  size_t start = 0;
+  while (start < list_len) {
+    // Skip leading whitespace
+    while (start < list_len && 
+           (hidden_list[start] == ' ' || hidden_list[start] == '\t'))
+      start++;
+    
+    if (start >= list_len)
+      break;
+    
+    // Find next separator (space or comma) or end of string
+    size_t end = start;
+    while (end < list_len && 
+           hidden_list[end] != ' ' && 
+           hidden_list[end] != '\t' &&
+           hidden_list[end] != ',')
+      end++;
+    
+    // Check if qcode starts with this prefix
+    size_t prefix_len = end - start;
+    if (prefix_len > 0 && qcode.compare(0, prefix_len, hidden_list + start, prefix_len) == 0) {
+      return true;
+    }
+    
+    start = end + 1;
+  }
+  
+  return false;
 }
 
 /**
@@ -433,9 +532,11 @@ static bool
 ShouldDisplayNOTAM(const NOTAMStruct &notam, const NOTAMSettings &settings)
 {
   // Check IFR filter (I=IFR-only, V=VFR-only, IV=both)
+  // When show_ifr is false, only filter out IFR-only NOTAMs (I)
+  // IV NOTAMs apply to both IFR and VFR, so they should always be shown
   if (!settings.show_ifr && !notam.traffic.empty()) {
-    if (notam.traffic == "I" || notam.traffic == "IV") {
-      LogFormat("NOTAM Filter: %s is IFR traffic (%s), filtered out", 
+    if (notam.traffic == "I") {
+      LogFormat("NOTAM Filter: %s is IFR-only traffic (%s), filtered out", 
                 notam.number.c_str(), notam.traffic.c_str());
       return false;
     }
@@ -450,6 +551,15 @@ ShouldDisplayNOTAM(const NOTAMStruct &notam, const NOTAMSettings &settings)
     }
   }
   
+  // Check radius filter
+  if (settings.max_radius_m > 0) {
+    if (notam.geometry.radius_meters > settings.max_radius_m) {
+      LogFormat("NOTAM Filter: %s radius %.0f m exceeds limit %u m, filtered out", 
+                notam.number.c_str(), notam.geometry.radius_meters, settings.max_radius_m);
+      return false;
+    }
+  }
+  
   // Check Q-code filters
   const auto &qcode = notam.feature_type;
   
@@ -460,23 +570,10 @@ ShouldDisplayNOTAM(const NOTAMStruct &notam, const NOTAMSettings &settings)
   
   LogFormat("NOTAM Filter: %s Q-code='%s'", notam.number.c_str(), qcode.c_str());
   
-  // Check if this Q-code is in the hidden list
-  if (qcode.length() >= 2) {
-    // First check for 3-character code (e.g., QOL)
-    if (qcode.length() >= 3) {
-      std::string code3 = qcode.substr(0, 3);
-      if (IsQCodeHidden(code3, settings.hidden_qcodes)) {
-        LogFormat("NOTAM Filter: %s Q-code %s is hidden", notam.number.c_str(), code3.c_str());
-        return false;
-      }
-    }
-    
-    // Then check 2-character code (e.g., QO, QW)
-    std::string code2 = qcode.substr(0, 2);
-    if (IsQCodeHidden(code2, settings.hidden_qcodes)) {
-      LogFormat("NOTAM Filter: %s Q-code %s is hidden", notam.number.c_str(), code2.c_str());
-      return false;
-    }
+  // Check if this Q-code matches any prefix in the hidden list
+  if (IsQCodeHidden(qcode, settings.hidden_qcodes.c_str())) {
+    LogFormat("NOTAM Filter: %s Q-code %s is hidden", notam.number.c_str(), qcode.c_str());
+    return false;
   }
   
   // Not filtered - show it
@@ -578,8 +675,25 @@ NOTAMGlue::UpdateAirspaces(Airspaces &airspaces)
         
         tstring notam_name = tstring(main_text.begin(), main_text.end());
         
-        // Use ICAO location code for station name
-        tstring notam_station = tstring(notam.location.begin(), notam.location.end());
+        // Format station name as "[series], [type], [selection_code]"
+        std::string notam_station_str;
+        if (!notam.series.empty()) {
+          notam_station_str += notam.series;
+        }
+        if (!notam.type.empty()) {
+          if (!notam_station_str.empty()) {
+            notam_station_str += ", ";
+          }
+          notam_station_str += notam.type;
+        }
+        if (!notam.feature_type.empty()) {
+          if (!notam_station_str.empty()) {
+            notam_station_str += ", ";
+          }
+          notam_station_str += notam.feature_type;
+        }
+        
+        tstring notam_station = tstring(notam_station_str.begin(), notam_station_str.end());
         
         // Use the parsed AirspaceAltitude objects directly
         AirspaceAltitude base = notam.lower_altitude;

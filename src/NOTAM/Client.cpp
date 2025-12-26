@@ -235,6 +235,16 @@ ParseNOTAMFeature(const boost::json::object &feature)
     notam.classification = boost::json::value_to<std::string>(it->value());
   }
   
+  // Parse NOTAM series (e.g., F, M, B, W)
+  if (auto it = notam_obj.find("series"); it != notam_obj.end()) {
+    notam.series = boost::json::value_to<std::string>(it->value());
+  }
+  
+  // Parse NOTAM type (R=Replace, N=New, C=Cancel)
+  if (auto it = notam_obj.find("type"); it != notam_obj.end()) {
+    notam.type = boost::json::value_to<std::string>(it->value());
+  }
+  
   // Parse selection code (ICAO Q-code that indicates NOTAM type)
   if (auto it = notam_obj.find("selectionCode"); it != notam_obj.end()) {
     notam.feature_type = boost::json::value_to<std::string>(it->value());
