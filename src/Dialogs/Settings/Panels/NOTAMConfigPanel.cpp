@@ -101,9 +101,9 @@ NOTAMConfigPanel::Prepare([[maybe_unused]] ContainerWindow &parent,
   if (last_update > 0) {
     TCHAR time_buffer[32];
     const auto *tm = std::localtime(&last_update);
-    _sntprintf(time_buffer, 32, _T("%04d-%02d-%02d %02d:%02d"),
-               tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-               tm->tm_hour, tm->tm_min);
+    StringFormat(time_buffer, 32, _T("%04d-%02d-%02d %02d:%02d"),
+                 tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+                 tm->tm_hour, tm->tm_min);
     AddReadOnly(_("Last Update"), nullptr, time_buffer);
   } else {
     AddReadOnly(_("Last Update"), nullptr, _("Never"));
@@ -254,9 +254,9 @@ NOTAMConfigPanel::RefreshDisplayFields() noexcept
   if (last_update > 0) {
     TCHAR time_buffer[32];
     const auto *tm = std::localtime(&last_update);
-    _sntprintf(time_buffer, 32, _T("%04d-%02d-%02d %02d:%02d"),
-               tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
-               tm->tm_hour, tm->tm_min);
+    StringFormat(time_buffer, 32, _T("%04d-%02d-%02d %02d:%02d"),
+                 tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday,
+                 tm->tm_hour, tm->tm_min);
     SetText(LastUpdate, time_buffer);
   } else {
     SetText(LastUpdate, _("Never"));
