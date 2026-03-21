@@ -2,7 +2,10 @@
 set -euo pipefail
 
 # This script is meant for execution by Xcode.
-# Note: We could let Xcode pass through the build settings in the environment, but this currently at least breaks host compiling of tools (GenerateSineTable will then be build for target) and maybe has other unwanted side effects ... so we pass individual settings as script arguments.
+# Note: We could let Xcode pass through the build settings in the environment, 
+# but this currently at least breaks host compiling of tools 
+# (GenerateSineTable will then be build for target) and maybe has other
+# unwanted side effects ... so we pass individual settings as script arguments.
 
 # Input validation
 if [ $# -lt 2 ]; then
@@ -22,6 +25,10 @@ if [ "${CONFIGURATION}" = "Debug" ]; then
     DEBUG="y"
 fi
 export DEBUG
+
+# Optional testing flavor (y/n). Default to testing builds for safety
+# (red icon / "do not fly" marker), unless explicitly overridden.
+TESTING_MODE="${TESTING:-y}"
 
 # Function to safely remove and create symlink
 create_symlink() {
@@ -58,7 +65,7 @@ esac
 
 export TARGET
 
-echo "build.sh: Executing gmake for target $TARGET"
+echo "build.sh: Executing gmake for target $TARGET (TESTING=$TESTING_MODE)"
 
 # Set IPA target based on platform
 IPA_TARGET="ipa"
@@ -74,8 +81,23 @@ NUM_CPUS=$(getconf _NPROCESSORS_ONLN 2>/dev/null || sysctl -n hw.ncpu 2>/dev/nul
 
 echo "Building with $NUM_CPUS parallel jobs..."
 
-# Execute make with error checking
-if ! gmake -j"${NUM_CPUS}" USE_CCACHE=y V=2 OPTIMIZE="-O0" DEBUG="$DEBUG" TARGET="$TARGET" $IPA_TARGET; then
+# Execute make with error checking.
+# Keep -O0 for Debug builds only; Release must keep build/debug.mk defaults
+# so -DNDEBUG is applied and debug-only UI markers are disabled.
+GMAKE_ARGS=(
+  -j"${NUM_CPUS}"
+  USE_CCACHE=y
+  V=2
+  DEBUG="$DEBUG"
+  TARGET="$TARGET"
+  TESTING="$TESTING_MODE"
+)
+
+if [ "$DEBUG" = "y" ]; then
+  GMAKE_ARGS+=(OPTIMIZE="-O0")
+fi
+
+if ! gmake "${GMAKE_ARGS[@]}" $IPA_TARGET; then
     echo "Error: Build failed" >&2
     exit 1
 fi
