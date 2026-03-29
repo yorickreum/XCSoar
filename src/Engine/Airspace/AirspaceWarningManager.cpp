@@ -5,11 +5,33 @@
 #include "Geo/GeoVector.hpp"
 #include "Airspaces.hpp"
 #include "AbstractAirspace.hpp"
+#include "Engine/Airspace/AirspaceClass.hpp"
 #include "AirspaceIntersectionVisitor.hpp"
 #include "AirspaceAircraftPerformance.hpp"
 #include "Task/Stats/TaskStats.hpp"
 
 static constexpr double CRUISE_FILTER_FACT = 0.5;
+
+[[gnu::pure]]
+static bool
+IsNotamAirspace(const AbstractAirspace &airspace) noexcept
+{
+  return airspace.GetClassOrType() == AirspaceClass::NOTAM ||
+         airspace.GetTypeOrClass() == AirspaceClass::NOTAM;
+}
+
+/**
+ * Stable id for NOTAM day-ack: short identifier in #GetStationName().
+ */
+[[gnu::pure]]
+static const char *
+NotamDayAckKey(const AbstractAirspace &airspace) noexcept
+{
+  if (!IsNotamAirspace(airspace))
+    return nullptr;
+  const char *const s = airspace.GetStationName();
+  return (s != nullptr && s[0] != '\0') ? s : nullptr;
+}
 
 AirspaceWarningManager::AirspaceWarningManager(const AirspaceWarningConfig &_config,
                                                const Airspaces &_airspaces)
@@ -67,7 +89,7 @@ AirspaceWarningManager::SetPredictionTimeFilter(FloatDuration time) noexcept
 }
 
 AirspaceWarning& 
-AirspaceWarningManager::GetWarning(ConstAirspacePtr airspace) noexcept
+AirspaceWarningManager::GetWarning(ConstAirspacePtr airspace)
 {
   AirspaceWarning* warning = GetWarningPtr(*airspace);
   if (warning)
@@ -91,7 +113,7 @@ AirspaceWarningManager::GetWarningPtr(const AbstractAirspace &airspace) noexcept
 }
 
 AirspaceWarning *
-AirspaceWarningManager::GetNewWarningPtr(ConstAirspacePtr airspace) noexcept
+AirspaceWarningManager::GetNewWarningPtr(ConstAirspacePtr airspace)
 {
   ++serial;
   warnings.emplace_back(airspace);
@@ -103,7 +125,7 @@ AirspaceWarningManager::Update(const AircraftState& state,
                                const GlidePolar &glide_polar,
                                const TaskStats &task_stats,
                                const bool circling,
-                               const std::chrono::duration<unsigned> dt) noexcept
+                               const std::chrono::duration<unsigned> dt)
 {
   bool changed = false;
 
@@ -195,36 +217,41 @@ public:
    * @param airspace Airspace corresponding to current intersection
    */
   void Intersection(ConstAirspacePtr &airspace_ptr) noexcept {
-    const auto &airspace = *airspace_ptr;
-    if (!airspace.IsActive())
-      return; // ignore inactive airspaces completely
+    try {
+      const auto &airspace = *airspace_ptr;
+      if (!airspace.IsActive())
+        return; // ignore inactive airspaces completely
 
-    if (!(warning_manager.GetConfig().IsClassEnabled(airspace.GetClassOrType()) || 
-	      warning_manager.GetConfig().IsClassEnabled(airspace.GetTypeOrClass())) ||
-        ExcludeAltitude(airspace))
-      return;
+      if (!(warning_manager.GetConfig().IsClassEnabled(airspace.GetClassOrType()) ||
+            warning_manager.GetConfig().IsClassEnabled(airspace.GetTypeOrClass())) ||
+          ExcludeAltitude(airspace))
+        return;
 
-    AirspaceWarning *warning = warning_manager.GetWarningPtr(airspace);
-    if (warning == nullptr || warning->IsStateAccepted(warning_state)) {
+      AirspaceWarning *warning = warning_manager.GetWarningPtr(airspace);
+      if (warning == nullptr || warning->IsStateAccepted(warning_state)) {
 
-      AirspaceInterceptSolution solution;
+        AirspaceInterceptSolution solution;
 
-      if (mode_inside) {
-        solution = airspace.Intercept(state, perf,
-                                      state.location, state.location);
-      } else {
-        solution = Intercept(airspace, state, perf);
+        if (mode_inside) {
+          solution = airspace.Intercept(state, perf,
+                                        state.location, state.location);
+        } else {
+          solution = Intercept(airspace, state, perf);
+        }
+        if (!solution.IsValid())
+          return;
+        if (solution.elapsed_time > max_time)
+          return;
+
+        if (warning == nullptr)
+          warning = warning_manager.GetNewWarningPtr(std::move(airspace_ptr));
+
+        warning->UpdateSolution(warning_state, solution);
+        found = true;
       }
-      if (!solution.IsValid())
-        return;
-      if (solution.elapsed_time > max_time)
-        return;
-
-      if (warning == nullptr)
-        warning = warning_manager.GetNewWarningPtr(std::move(airspace_ptr));
-
-      warning->UpdateSolution(warning_state, solution);
-      found = true;
+    } catch (...) {
+      // The visitor interface is noexcept; drop unexpected failures here
+      // instead of terminating the process from the airspace scan.
     }
   }
 
@@ -419,28 +446,40 @@ AirspaceWarningManager::Acknowledge(ConstAirspacePtr airspace) noexcept
 
 void
 AirspaceWarningManager::AcknowledgeWarning(ConstAirspacePtr airspace,
-                                           const bool set) noexcept
+                                           const bool set)
 {
   GetWarning(std::move(airspace)).AcknowledgeWarning(set);
 }
 
 void
 AirspaceWarningManager::AcknowledgeInside(ConstAirspacePtr airspace,
-                                          const bool set) noexcept
+                                          const bool set)
 {
   GetWarning(std::move(airspace)).AcknowledgeInside(set);
 }
 
 void
 AirspaceWarningManager::AcknowledgeDay(ConstAirspacePtr airspace,
-                                       const bool set) noexcept
+                                       const bool set)
 {
+  if (const char *key = NotamDayAckKey(*airspace); key != nullptr) {
+    if (set)
+      notam_day_ack_by_station.emplace(key);
+    else
+      notam_day_ack_by_station.erase(key);
+  }
+
   GetWarning(std::move(airspace)).AcknowledgeDay(set);
 }
 
 bool
 AirspaceWarningManager::GetAckDay(const AbstractAirspace &airspace) const noexcept
 {
+  if (const char *key = NotamDayAckKey(airspace);
+      key != nullptr &&
+      notam_day_ack_by_station.find(key) != notam_day_ack_by_station.end())
+    return true;
+
   const AirspaceWarning *warning = GetWarningPtr(airspace);
   return warning != nullptr && warning->GetAckDay();
 }
