@@ -59,6 +59,7 @@ void
 Profile::Load(const ProfileMap &map, AirspaceRendererSettings &settings)
 {
   map.GetEnum(ProfileKeys::AirspaceLabelSelection, settings.label_selection);
+  map.Get(ProfileKeys::AirspaceShowNOTAMLabels, settings.show_notam_labels);
   map.Get(ProfileKeys::AirspaceBlackOutline, settings.black_outline);
   map.GetEnum(ProfileKeys::AltMode, settings.altitude_mode);
   map.Get(ProfileKeys::ClipAlt, settings.clip_altitude);

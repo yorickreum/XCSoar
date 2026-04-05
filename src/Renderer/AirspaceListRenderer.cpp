@@ -78,19 +78,19 @@ AirspaceListRenderer::Draw(Canvas &canvas, const PixelRect rc,
                            const AirspaceRendererSettings &renderer_settings)
 {
   const char *class_or_type = AirspaceFormatter::GetClassOrType(airspace);
-  StaticString<256> comment(class_or_type);
+  StaticString<256> type_with_location(class_or_type);
 
-  comment.AppendFormat(" - %s - %s",
-                       FormatUserDistanceSmart(vector.distance).c_str(),
-                       FormatBearing(vector.bearing).c_str());
+  type_with_location.AppendFormat(" - %s - %s",
+                                  FormatUserDistanceSmart(vector.distance).c_str(),
+                                  FormatBearing(vector.bearing).c_str());
 
   const char *name = airspace.GetName();
   if (airspace.GetClassOrType() == AirspaceClass::NOTAM) {
-    // NOTAMs: name is primary, class/type + distance + bearing as secondary
-    ::Draw(canvas, rc, airspace, name, comment,
+    // NOTAMs: class/type + distance + bearing as primary, name as secondary
+    ::Draw(canvas, rc, airspace, name, type_with_location,
            row_renderer, look, renderer_settings);
   } else {
-    ::Draw(canvas, rc, airspace, comment, name,
+    ::Draw(canvas, rc, airspace, type_with_location, name,
            row_renderer, look, renderer_settings);
   }
 }

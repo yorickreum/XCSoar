@@ -22,6 +22,7 @@ using namespace std::chrono;
 enum ControlIndex {
   AirspaceDisplay,
   AirspaceLabelSelection,
+  ShowNotamLabels,
   ClipAltitude,
   AltWarningMargin,
   AirspaceWarnings,
@@ -166,6 +167,11 @@ AirspaceConfigPanel::Prepare(ContainerWindow &parent,
           as_label_selection_list, (unsigned)renderer.label_selection);
   SetExpertRow(AirspaceLabelSelection);
 
+  AddBoolean(_("Show NOTAM labels"),
+             _("Show brief NOTAM text labels on the map when zoomed in sufficiently."),
+             renderer.show_notam_labels);
+  SetExpertRow(ShowNotamLabels);
+
   AddFloat(_("Clip altitude"),
            _("For clip airspace mode, this is the altitude below which airspace is displayed."),
            "%.0f %s", "%.0f", 0, 20000, 100, false,
@@ -237,6 +243,9 @@ AirspaceConfigPanel::Save(bool &_changed) noexcept
 
   changed |= SaveValueEnum(AirspaceLabelSelection, ProfileKeys::AirspaceLabelSelection, renderer.label_selection);
 
+  changed |= SaveValue(ShowNotamLabels, ProfileKeys::AirspaceShowNOTAMLabels,
+                       renderer.show_notam_labels);
+
   changed |= SaveValue(ClipAltitude, UnitGroup::ALTITUDE, ProfileKeys::ClipAlt, renderer.clip_altitude);
 
   changed |= SaveValue(AltWarningMargin, UnitGroup::ALTITUDE, ProfileKeys::AltMargin, computer.warnings.altitude_warning_margin);
@@ -279,4 +288,3 @@ CreateAirspaceConfigPanel()
 {
   return std::make_unique<AirspaceConfigPanel>();
 }
-

@@ -15,6 +15,7 @@ struct AirspaceWarningConfig;
 class Airspaces;
 class ProtectedAirspaceWarningManager;
 class Canvas;
+class LabelBlock;
 class WindowProjection;
 
 class AirspaceLabelRenderer
@@ -56,7 +57,10 @@ private:
   void DrawInternal(Canvas &canvas,
                     const WindowProjection &projection,
                     AirspacePredicate visible,
-                    const AirspaceWarningConfig &config) noexcept;
+                    const AirspaceWarningConfig &config,
+                    bool draw_altitude_labels,
+                    bool draw_notam_labels,
+                    LabelBlock *label_block) noexcept;
 
   void DrawLabel(Canvas &canvas, const WindowProjection &projection,
                  const AirspaceLabelList::Label &label) noexcept;
@@ -69,5 +73,6 @@ public:
             const WindowProjection &projection,
             const MoreData &basic, const DerivedInfo &calculated,
             const AirspaceComputerSettings &computer_settings,
-            const AirspaceRendererSettings &settings) noexcept;
+            const AirspaceRendererSettings &settings,
+            LabelBlock *label_block = nullptr) noexcept;
 };
