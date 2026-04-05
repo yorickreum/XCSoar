@@ -69,7 +69,7 @@ class NOTAMGlue final : public RateLimiter {
 
 public:
   NOTAMGlue(const NOTAMSettings &_settings, CurlGlobal &_curl);
-  virtual ~NOTAMGlue();
+  ~NOTAMGlue();
   
   /**
    * Register a listener for NOTAM update notifications
