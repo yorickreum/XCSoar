@@ -88,6 +88,9 @@ NOTAMConfigPanel::Prepare([[maybe_unused]] ContainerWindow &parent,
   AddBoolean(_("NOTAM Support"),
              _("Enable downloading and display of NOTAMs from aviation authorities."),
              computer.notam.enabled, this);
+  AddReadOnly(_("Notice"), nullptr,
+              _("NOTAM display is for situational awareness only and does not "
+                "replace proper pre-flight NOTAM briefing."));
 
   Unit distance_unit = Units::GetUserDistanceUnit();
   double radius_user = Units::ToUserDistance(computer.notam.radius_km * 1000.0);
