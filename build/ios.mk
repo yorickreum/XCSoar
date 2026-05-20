@@ -63,7 +63,7 @@ HOST_MACOS_VERSION = $(shell sw_vers -buildVersion)
 TARGET_SDK_NAME = $(shell /usr/libexec/PlistBuddy -c 'print CanonicalName' $(DARWIN_SDK)/SDKSettings.plist)
 TARGET_SDK_VERSION = $(shell /usr/libexec/PlistBuddy -c 'print Version' $(DARWIN_SDK)/SDKSettings.plist)
 XCODE_VERSION = $(shell xcodebuild -version | grep Xcode | cut -d ' ' -f 2)
-XCODE_VERSION_FORMATTED = $(shell printf "%02.2f" $(XCODE_VERSION) | tr -d '.')
+XCODE_VERSION_FORMATTED = $(shell echo $(XCODE_VERSION) | awk -F. '{ printf "%02d%d%d", $$1, ($$2 == "" ? 0 : $$2), ($$3 == "" ? 0 : $$3) }')
 SDK_BUILD_VERSION = $(shell /usr/libexec/PlistBuddy -c 'print ProductBuildVersion' $(DARWIN_SDK)/System/Library/CoreServices/SystemVersion.plist)
 XCODE_BUILD = $(shell /usr/libexec/PlistBuddy -c 'print ProductBuildVersion' $(shell xcode-select --print-path)/../version.plist)
 OSX_MIN_SUPPORTED_VERSION ?= 11.0

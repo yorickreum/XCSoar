@@ -10,13 +10,22 @@ from __future__ import annotations
 import json
 import os
 import plistlib
+import shlex
 import shutil
 import subprocess
 import sys
 from pathlib import Path
 
 
-def run(cmd: list[str], check: bool = True, capture_output: bool = False) -> subprocess.CompletedProcess[str]:
+def format_command(cmd: list[str]) -> str:
+    return " ".join(shlex.quote(arg) for arg in cmd)
+
+
+def run(
+    cmd: list[str],
+    check: bool = True,
+    capture_output: bool = False,
+) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         cmd,
         check=check,
@@ -182,20 +191,21 @@ def main() -> int:
     app_path = target_output_dir / "ipa" / "Payload" / "XCSoar.app"
     app_test_dir = app_path / "tests"
 
-    print(f"check-ios-sim: building simulator app and tests for target {target}")
+    print(f"check-ios-sim: target={target} make={make_bin} mode={sim_tests_mode}", flush=True)
+    print(f"check-ios-sim: building simulator app and tests for target {target}", flush=True)
     # -Oline serializes job output; V=0 reduces noise. Helps avoid gmake
     # "write error: stdout" on CI when parallel build output is very large.
-    run(
-        [
-            make_bin,
-            "-Oline",
-            f"-j{cpu_count()}",
-            f"TARGET={target}",
-            "V=0",
-            "build-check",
-            "ipa",
-        ]
-    )
+    build_cmd = [
+        make_bin,
+        "-Oline",
+        f"-j{cpu_count()}",
+        f"TARGET={target}",
+        "V=0",
+        "build-check",
+        "ipa",
+    ]
+    print(f"check-ios-sim: running {format_command(build_cmd)}", flush=True)
+    run(build_cmd)
 
     if not app_path.is_dir():
         print(f"Error: app bundle not found at {app_path}", file=sys.stderr)
@@ -229,6 +239,8 @@ def main() -> int:
         print("Error: no tests left after applying SIM_SKIP_TESTS", file=sys.stderr)
         return 1
 
+    print(f"check-ios-sim: selected {len(test_names)} test binary/binaries", flush=True)
+
     resolved = resolve_simulator_udid()
     if resolved is None:
         print("Error: could not find any available iPhone simulator", file=sys.stderr)
@@ -237,7 +249,7 @@ def main() -> int:
         return 1
 
     sim_device_name, device_udid = resolved
-    print(f"check-ios-sim: using simulator {sim_device_name} ({device_udid})")
+    print(f"check-ios-sim: using simulator {sim_device_name} ({device_udid})", flush=True)
     run(["xcrun", "simctl", "boot", device_udid], check=False)
     run(["xcrun", "simctl", "bootstatus", device_udid, "-b"])
 
@@ -264,7 +276,7 @@ def main() -> int:
         print(f"Error: CFBundleIdentifier missing in {plist_path}", file=sys.stderr)
         return 1
 
-    print(f"check-ios-sim: installing app bundle {bundle_id}")
+    print(f"check-ios-sim: installing app bundle {bundle_id}", flush=True)
     run(["xcrun", "simctl", "install", device_udid, str(app_path)])
 
     container_app_path = run(
@@ -284,6 +296,9 @@ def main() -> int:
     if not container_data_path:
         print("Error: failed to resolve installed app data container path", file=sys.stderr)
         return 1
+
+    print(f"check-ios-sim: app container {container_app_path}", flush=True)
+    print(f"check-ios-sim: data container {container_data_path}", flush=True)
 
     # Tests are launched by simctl spawn with cwd at <simulator data root>.
     # Resolve that root by finding the 'Containers' anchor in the container
