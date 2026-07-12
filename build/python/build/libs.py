@@ -277,7 +277,6 @@ curl = CmakeProject(
         # CMake may find the host's pipe2() while cross-compiling for iOS.
         "-DHAVE_PIPE2=0",
     ],
-    patches=abspath("lib/curl/patches"),
 )
 
 # Needed by proj
