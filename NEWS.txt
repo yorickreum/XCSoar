@@ -31,6 +31,7 @@ Version 7.45 - not yet released
     to filter self and additional own aircraft from OGN when the device
     radio id is unavailable (e.g. LX passthrough) #2693
 * documentation
+  - document 15-minute UTC offset selection
   - document custom ``.xci`` loading: ``#CLEAR``, merge vs replace,
     ``type`` values (``key`` / ``gce`` / ``gesture`` / ``ne`` /
     ``label``), gesture ``data`` format, softkey ``location``,
@@ -47,6 +48,7 @@ Version 7.45 - not yet released
   - fix crash when opening the aircraft type picker without a network
     connection
 * ui
+  - Support manual UTC offsets up to +14:00 in 15-minute increments
   - Fix zoom buttons still appearing when "Show Zoom button" is off
     while Menu or Quick Menu is on #2830
   - Keep map overlay zoom with the menu/QuickMenu buttons top-right
