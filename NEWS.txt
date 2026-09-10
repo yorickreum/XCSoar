@@ -33,6 +33,8 @@ Version 7.46 - not yet released
     limit #2867
   - fix choosing SkySight as a page overlay with no layers available
     silently switching back to None
+  - fix UK XC Therm forecast overlays (met-ukv model and layer
+    catalog) #3029
 * map
   - fix the ragged white halo behind map labels on high-DPI screens
     #2879
